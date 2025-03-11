@@ -10,12 +10,17 @@
 import logging
 import os
 import pathlib
-# Python Modules
 import sys
+# Python Modules
 from configparser import ConfigParser
 from pathlib import Path
 
-# init logger
+# 配置日志格式，增加文件名和行号
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
 # init configParser

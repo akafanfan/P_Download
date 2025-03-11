@@ -6,15 +6,23 @@
 #
 """
 import json
-# Python modules
 import logging
+# Python modules
 import os
 # As replacement use sqlite python module
 import sqlite3
+import sys
 
 # own Modules
 from config_handler import config
 
+# 配置日志格式，增加文件名和行号
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 # temporarily removed sql alchemy.
 # It is not possible to use a dynamic database scheme (JSON Based) scheme.
 # HELP NEEDED :)
@@ -26,9 +34,6 @@ from config_handler import config
 db_init: bool = False
 # ENGINE Object
 ENGINE = None
-
-# init logger
-logger = logging.getLogger(__name__)
 
 
 def check_db():

@@ -4,3 +4,4 @@ prettytable >= 3.10.0
 yt_dlp >= 2024.4.9
 validators >= 0.28.1
 pytz >= 2024.1
+colorlog >= 6.7.0

@@ -23,6 +23,7 @@ import logging
 import os
 import pathlib
 import re
+import sys
 import urllib.parse as urlparse
 from datetime import datetime
 
@@ -38,7 +39,12 @@ from config_handler import config
 from database_manager import (check_table_exist, create_table, update_value,
                               insert_value, fetch_value, fetch_value_as_bool, delete_value)
 
-# init logger
+# 配置日志格式，增加文件名和行号
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
 # Define buffer per Thread in Bytes for filehashing - Default 2GB = 2147483648
@@ -336,10 +342,11 @@ def update_subscriptions():
             time_since_last_check = datetime.strptime(current_time, "%Y-%m-%d %H:%M:%S") - datetime.strptime(last_checked, "%Y-%m-%d %H:%M:%S")
             hours_since_last_check = time_since_last_check.seconds / 3600
 
-            if hours_since_last_check < int(check_interval):
-                logger.info("Subscription %s was checked %s hours ago. Skip",
-                            subscription[1], str(round(hours_since_last_check, 2)))
-                continue
+            # 检查间隔时间检查
+            # if hours_since_last_check < int(check_interval):
+            #     logger.info("Subscription %s was checked %s hours ago. Skip",
+            #                 subscription[1], str(round(hours_since_last_check, 2)))
+            #     continue
 
         # Check for number of items
         if (current_obj["obj"]["subscription_content_count"] == subscription[5] and
@@ -383,7 +390,7 @@ def update_subscriptions():
             table_updates = update_value(
                 "subscriptions",
                 {
-                    "subscription_last_checked": current_time,
+                    # "subscription_last_checked": current_time,
                     "last_subscription_data": subscription[7],
                     "current_subscription_data": current_obj["obj"]["current_subscription_data"],
                     "subscription_has_new_data": "1",
@@ -701,7 +708,7 @@ def get_subscription_data_obj(url: str, downloaded=None, last_checked=None, last
     logger.debug("Used scheme for url is: %s", data["scheme"])
 
     subscription_data = create_subscription_url(url, data["scheme"])
-    logger.info("订阅的URL成功创建》》》》》》》》》》》")
+    logger.info("订阅的URL成功创建")
     if not subscription_data["status"]:
         if subscription_data["subscribable"] is False:
             schema_name = data["scheme"]["scheme_name"]
@@ -1021,6 +1028,9 @@ def download_missing():
     failed_downloads = {}
     current_subscription = ""
     for subscription in subscriptions:
+        logger.info("🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟")
+        logger.info("🌟🌟🌟🌟🌟🌟" + subscription[1] + "🌟🌟🌟🌟🌟🌟")
+        logger.info("🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟🌟")
         downloaded = 0
         # Create a new error array for the current subscription
         failed_downloads[subscription[1]] = []
@@ -1053,10 +1063,12 @@ def download_missing():
         num = len(metadata["entries"])
         # 开始遍历每一个视频条目
         for entry in metadata["entries"]:
-            logger.info("》》》》》》当前条目编号: %s", num)
+            logger.info(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+            logger.info(">>>>>>>>>>>>>>>>当前条目编号: %s", num)
             # Check each entry if it already exist before downloading,
             # using the title and the link
-            # entry_title = entry["title"]             logger.info("》》》》》》当前条目标题: %s", entry_title)
+            entry_title = entry["title"]
+            logger.info(">>>>>>>>>>>>>>>>当前条目标题: %s", entry_title)
             if not "title" in entry or not "url" in entry:
                 logger.error("Entry misses needed keys! - SKIP")
                 continue
@@ -1065,29 +1077,29 @@ def download_missing():
             entry_scheme = load_scheme(entry["url"])
 
             if not entry_scheme["status"] or entry_scheme["scheme"] is None:
-                logger.error("Error while loading scheme for %s! - SKIP", entry["title"])
+                logger.error("Error while loading scheme for %s! - SKIP", entry_title)
                 continue
 
             # Fetch the metadata of the current entry to try to check for the filename
             expected_path = subscription_path["dst_path"]
 
             if expected_path is None:
-                logger.error("Error while fetching expected path for %s - SKIP", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching expected path for %s - SKIP", entry_title)
+                failed_downloads[subscription[1]].append(entry_title)
                 continue
             # 获取当前url视频元数据
             file_metadata = get_metadata(entry["url"], get_ydl_opts(expected_path))
 
             if file_metadata is None:
-                logger.error("Error while fetching metadata! - Skip item %s", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching metadata! - Skip item %s", entry_title)
+                failed_downloads[subscription[1]].append(entry_title)
                 continue
 
-            expected_filename = get_expected_filepath(file_metadata, expected_path, entry["title"])
+            expected_filename = get_expected_filepath(file_metadata, expected_path, entry_title)
 
             if not expected_filename["filename"]:
-                logger.error("Error while fetching filename for %s! - Skip item", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching filename for %s! - Skip item", entry_title)
+                failed_downloads[subscription[1]].append(entry_title)
                 continue
 
             # This bool is used to decide if the current entry will be downloaded
@@ -1140,21 +1152,19 @@ def download_missing():
             #     logger.info("New file %s will be downloaded", entry["title"])
 
             # If the file should not be downlaoded go to the next one
-            download_file_now = True
+            # download_file_now = True
 
+            # 比较两个日期时间对象
+            # 将时间戳转换为 datetime 对象
             entry_create_time = datetime.fromtimestamp(file_metadata['timestamp'])
             subscription_last_checked = datetime.strptime(subscription[7], "%Y-%m-%d %H:%M:%S")
-            # 比较两个日期时间对象
-            if entry_create_time > subscription_last_checked:
-                download_file_now = False
-            else:
-                download_file_now = True
-
-            # 如果 download_file_now 为 False，则跳过当前循环
-            if not download_file_now:
-                continue
+            logger.info("《%s》 条目创建时间: %s", entry_title, entry_create_time)
+            # 如果条目创建时间早于或等于上次检查时间，则跳过当前循环
+            if entry_create_time <= subscription_last_checked:
+                logger.info("条目创建时间早于或等于上次检查时间，跳过下载")
+                break
             title = f"{num}.{entry['title']}"
-            logger.info("开始下载条目 %s", title)
+            logger.info("开始下载条目：《%s》", title)
             file_downloaded = direct_download(entry["url"], title, subscription_path)
             num = num - 1
             if not file_downloaded:
@@ -1163,7 +1173,6 @@ def download_missing():
                 continue
             logger.info("File %s successfully downloaded", entry["title"])
             downloaded += 1
-
 
         # Modify the "downloaded_content_count" column in db
         value_modified = update_value("subscriptions",
@@ -1990,90 +1999,76 @@ def show_help():
         This function shows help
         Return Value: None
     """
-    print("------------------------------ Help ------------------------------")
+    print("------------------------------ 帮助 ------------------------------")
     # Line Break for Pylint #C0301
-    print("""You asked for help... Here it is :) -
-          Run YT-Manager with the following commands and you're good to go""")
-    help_table = PrettyTable(['Command', 'argument', 'description'])
-    help_table.align['Command'] = "l"
-    help_table.align['argument'] = "l"
-    help_table.align['description'] = "l"
-    help_table.add_row(['--Subscriptions--', '', ''])
-    help_table.add_row(['add-subscription', '<<url>> / batch <<file>>', 'Add a new subscription'])
+    print("""您请求了帮助... 以下是帮助内容，使用以下命令运行 YT-Manager，您就可以开始了""")
+    help_table = PrettyTable(['命令', '参数', '描述'])
+    help_table.align['命令'] = "l"
+    help_table.align['参数'] = "l"
+    help_table.align['描述'] = "l"
+    help_table.add_row(['——————订阅管理——————', '', ''])
+    help_table.add_row(['add-subscription', '<<url>> / batch <<file>>', '添加新订阅'])
     # Line Break for Pylint #C0301
     help_table.add_row(['del-subscription',
                         '<<number>> | <<Name>>, <<delete_content>>',
-                        '''Delete a subscription. You can either provide the ID
-                        of your subscription (use list-subscriptions)'''])
+                        '''删除订阅。您可以提供订阅的 ID（使用 list-subscriptions 查看）'''])
     # Line Break for Pylint #C0301
     help_table.add_row(['', '',
-                        '''or the name of the subscription (Name of a channel).
-                        The second parameter defines if all content of this channel also
-                        should be removed (Default: False = NO)'''])
+                        '''或者提供订阅的名称（频道名称）。 第二个参数决定是否同时删除该频道的所有内容（默认：False = 不删除）'''])
     # Line Break for Pylint #C0301
     help_table.add_row(['list-subscriptions',
                         '<<filter>>',
-                        '''List all subscriptions - You can provide a Filter (Array) of schemes
-                        you want to include'''])
+                        '''列出所有订阅 - 您可以提供一个过滤条件（数组）以包含指定的方案'''])
     help_table.add_row(['import-subscriptions',
                         '<<file>>',
-                        '''Import subscriptions from another instance (JSON File).
-                        You can make backups using "export-subscriptions"'''])
+                        '''从另一个实例导入订阅（JSON 文件）。您可以使用 "export-subscriptions" 创建备份'''])
     help_table.add_row(['export-subscriptions',
                         '',
-                        '''Create a Backup of the subscription table. A JSON File is created in the base directory'''])
+                        '''创建订阅表的备份。将在基础目录中生成一个 JSON 文件'''])
     help_table.add_row(['import-subscriptions',
                         '',
-                        '''Import a Backup of the subscription table.'''])
+                        '''导入订阅表的备份。'''])
     help_table.add_row(['', '', ''])
-    help_table.add_row(['--Other--', '', ''])
+    help_table.add_row(['——————其他功能——————', '', ''])
     # Line Break for Pylint #C0301
     help_table.add_row(['validate',
                         '',
-                        '''After any downloaded file a hash is generated and stored.
-                        For both checking for any duplicate files (independent of the name) and
-                        checking integrity of files (and maybe redownload them).'''])
+                        '''在下载任何文件后，会生成并存储一个哈希值。 用于检查重复文件（与文件名无关）以及 检查文件的完整性（并可能重新下载）。'''])
     # Line Break for Pylint #C0301
     help_table.add_row(['',
                         '',
-                        '''If you use this command all files will be revalidated and
-                        a report will be generated if there are any mismatches. '''])
+                        '''如果您使用此命令，所有文件将被重新验证，并生成报告以显示是否存在不匹配。'''])
     # Line Break for Pylint #C0301
     help_table.add_row(['',
                         '',
-                        '''But be aware -
-                        This operation can take very long and consumes much power...
-                        Use it with care or overnight :) -
-                        At the end you will see a report and you can decide if mismatched files
-                        should be redonwloaded'''])
+                        '''但请注意 - 此操作可能耗时较长且消耗大量资源...请谨慎使用或安排夜间运行 :) -最后您将看到报告，并可以决定是否重新下载不匹配的文件'''])
     help_table.add_row(['backup',
                         '',
-                        '''Create a backup and export all subscriptions and items into json files.'''])
+                        '''创建备份并导出所有订阅和项目到 JSON 文件。'''])
     help_table.add_row(['export-items',
                         '',
-                        '''Create a backup file with all items in the db.'''])
+                        '''创建包含数据库中所有项目的备份文件。'''])
     help_table.add_row(['import-items',
                         '<<path>>',
-                        '''Create a backup file with all items in the db.'''])
+                        '''从指定路径导入项目的备份文件。'''])
     help_table.add_row(['show-duplicates',
                         '',
-                        '''Show duplicates (use command validate before!)'''])
+                        '''显示重复项（使用 validate 命令前请先运行此命令！）'''])
 
     help_table.add_row(['', '', ''])
-    help_table.add_row(['--Operation--', '', ''])
+    help_table.add_row(['—————— 操   作 ——————', '', ''])
     # Line Break for Pylint #C0301
     help_table.add_row(['custom',
                         '<<url>> / batch <<file>>',
-                        '''In case you want to download a video from a channel without
-                        a subscription you can do it here...
-                        The file will saved in the default scheme based folder under /custom'''])
+                        '''如果您想从没有订阅的频道下载视频，
+                        可以在此操作...
+                        文件将保存在基于默认方案的 /custom 文件夹中'''])
     # Line Break for Pylint #C0301
     help_table.add_row(['start',
                         '',
-                        '''Run the script -> Check all subscriptions for
-                        new content and download it'''])
+                        '''运行脚本 -> 检查所有订阅的新内容并下载'''])
     print(help_table)
-    print("Example: yt-manager.py add-subscription youtube-url")
+    # print("示例: yt-manager.py add-subscription youtube-url")
     print("------------------------------------------------------------------")
 
 
