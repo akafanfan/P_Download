@@ -1,0 +1,76 @@
+{
+    "schema_name": "pornhub",
+    "url_template": true,
+    "db": {
+        "table_needed": false
+    },
+    "url_scheme": {
+        "tld": ["com", "org"],
+        "sld": ["pornhub"],
+        "subd": ["www", "cn", "cz", "de", "es", "fr", "it", "nl", "jp", "pt", "pl", "rt", ""]
+    },
+    "categories":
+    {
+        "available": true,
+        "needed": true,
+        "category_path": 1,
+        "categories": {
+            "pornstar":
+            {
+                "direct_download": false,
+                "subscription": true,
+                "subscription_url": "videos/upload",
+                "storage_path": "pornstar"
+            },
+            "model":
+            {
+                "direct_download": false,
+                "subscription": true,
+                "subscription_url": "videos/upload",
+                "storage_path": "model"
+            },
+            "channels":
+            {
+                "direct_download": false,
+                "subscription": true,
+                "subscription_url": "videos",
+                "storage_path": "channels"
+            },
+            "users":
+            {
+                "direct_download": false,
+                "subscription": true,
+                "subscription_url": "videos",
+                "storage_path": "users"
+            },
+            "playlist":
+            {
+                "direct_download": false,
+                "subscription": true,
+                "subscription_url": "videos",
+                "storage_path": "playlists"
+            },
+            "view_video.php":
+            {
+                "direct_download": true,
+                "subscription": false,
+                "subscription_url": false,
+                "storage_path": "custom"
+            }
+        }
+    },
+    "subscription": {
+        "available": true,
+        "subscription_name_locator": 2,
+        "url_blueprint": "{scheme}://{subd}.{sld}.{tld}/{category}/{subscription_name}/{subscription_url}"
+    },
+    "header":
+    {
+        "Cookie": "__Secure-3PAPISID=WdNt7tDYm5G-YYfl/AguCa5YzQHTtRaWU1; __Secure-3PSIDTS=sidts-CjEB3EgAEra9C2QcoMMrZDfGQE0P5XKRNUqXeELEn_7oD6oFG2-A-sUZ-LRZaXiQo-vjEAA; __Secure-3PSID=g.a000ngg2IsVm2mXcoH_ueCIezxCziIescvIbJrsCvASZloGYa-xWpEMz5zkYVnSMgU_u68z3UAACgYKAVMSARcSFQHGX2MiHNm37c1bvKYVK-6jZ7g4iBoVAUF8yKrDTDdaBBRPPSBXbDyX9UMx0076; NID=517=zb4ilZMvyt5MPnAFPQPtzkKhmv3q-NWerNUKgakONlJfSiH9rT_aR_ASIktrTkOADFfVHEox8FFyOdGV5kuU98RpZlVD6psebgg-dEilVMi1oUJ787GY6yf_Pe2upEQPjgGe7BnqXpJL7QhP9BZgyY6WCEzYqlzXI-180bHuus-CKEWRpLgENIjlHLWBRhAor90AQ8D4JUluQZ0V_XNNGAHCwQ7Ad_-cDrzqE-G7Bn5Ar7Oo88ww23CBMuTqdeUS7g8dFJeNEzWcmYJcw1jCsfCqgaQnYvJ8zYeHO3QaBi0cuyJDyeQO0GTV2ztNDHzzXTxmTqFnY3ywdOIBfE0xcnBz_FFE8zk; __Secure-3PSIDCC=AKEyXzXCETgEXq9CN7QiOqlIzxX-M2s8woIgQ00QYpZRQrowI3gPvg5e3Gor4Q7khRleeuXjJu0"
+    },
+    "storage":
+    {
+        "category_storage": true,
+        "base_path": "pornhub"
+    }
+}
