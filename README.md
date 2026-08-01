@@ -13,22 +13,9 @@
 ## 依赖安装
 
 ```bash
-pip install requests beautifulsoup4 PyYAML av
+pip install unofficial-api-for-pornhub requests beautifulsoup4 PyYAML
+
 ```
-
-另外需要安装项目自带的本地包（根据你的项目结构）：
-
-```bash
-# 如果 base_api / pornhub_api 是本地源码
-pip install -e ./base_api
-pip install -e ./pornhub_api
-```
-
-> `av`（PyAV）用于 remux（把下载的 TS 片段转成最终 MP4）。Windows 上如果安装失败，可尝试：
-> ```bash
-> pip install av --no-binary av
-> ```
-> 或使用预编译 wheel。
 
 ## 项目结构（示例）
 
