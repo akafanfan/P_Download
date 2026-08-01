@@ -5,7 +5,8 @@ Pornhub Downloader
 1. requests + BeautifulSoup 解析列表
 2. 当前页面视频反序下载，带序号
 3. interval 增量过滤：publish_date > interval 才下载；all 则不过滤
-4. 从第1页跑完后，把 interval 回写为当日零点
+4. 从第1页跑完后，把对应 user 的 interval 回写为当日零点
+5. 支持 userlist 多 model 循环
 """
 import asyncio
 import logging
@@ -23,7 +24,6 @@ from base_api import BaseCore, DownloadConfigHLS
 from base_api.modules.config import RuntimeConfig
 from pornhub_api import Client
 
-# 配置日志
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -56,13 +56,15 @@ def load_config(config_path: str = CONFIG_PATH) -> dict:
         "request_delay": 4,
         "download_max_retry": 3,
         "retry_sleep": 3,
-        "interval": "all",  # "all" 不过滤；否则为时间字符串，如 "2026-01-01 00:00:00"
+        "interval": "all",
+        "userlist": [],          # 新增
     }
     for k, v in defaults.items():
         cfg.setdefault(k, v)
 
-    if not cfg["target"]:
-        logger.error("target 链接不能为空")
+    # 兼容旧配置：没有 userlist 时用全局 target
+    if not cfg.get("userlist") and not cfg.get("target"):
+        logger.error("target 或 userlist 不能同时为空")
         sys.exit(1)
 
     cfg["model_start_page"] = int(cfg["model_start_page"])
@@ -74,21 +76,35 @@ def load_config(config_path: str = CONFIG_PATH) -> dict:
     return cfg
 
 
-def update_config_interval(config_path: str, new_interval: str) -> None:
-    """把配置文件中的 interval 改成新值并写回"""
+def update_user_interval(config_path: str, user_name: str, new_interval: str) -> None:
+    """回写指定 user 的 interval"""
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
-        cfg["interval"] = new_interval
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
-        logger.info(f"已回写配置 interval = {new_interval}")
+
+        updated = False
+        for user in cfg.get("userlist", []):
+            if user.get("name") == user_name:
+                user["interval"] = new_interval
+                updated = True
+                break
+
+        # 兼容旧单 target 写法
+        if not updated and not cfg.get("userlist"):
+            cfg["interval"] = new_interval
+            updated = True
+
+        if updated:
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+            logger.info(f"已回写 [{user_name or 'global'}] interval = {new_interval}")
+        else:
+            logger.warning(f"未找到 name={user_name} 的用户，interval 未回写")
     except Exception as e:
-        logger.error(f"回写配置文件 interval 失败: {e}")
+        logger.error(f"回写 interval 失败: {e}")
 
 
 def parse_datetime(value) -> datetime | None:
-    """尽量把 publish_date / interval 解析成 datetime"""
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -109,7 +125,6 @@ def parse_datetime(value) -> datetime | None:
             return datetime.strptime(s[:26].replace("Z", ""), fmt)
         except ValueError:
             continue
-    # 尝试只取前 19/10 位
     try:
         if len(s) >= 19:
             return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
@@ -121,15 +136,9 @@ def parse_datetime(value) -> datetime | None:
 
 
 def sanitize_filename(name: str) -> str:
-    """清理文件名非法字符"""
     name = re.sub(r'[\\/*?:"<>|]', "_", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name[:180]
-
-
-def file_already_exists(save_dir: Path, full_name: str) -> bool:
-    target_file = save_dir / full_name
-    return target_file.exists()
 
 
 async def safe_download_video(
@@ -139,12 +148,6 @@ async def safe_download_video(
     index: int = 0,
     total: int = 0,
 ) -> str:
-    """
-    返回值:
-        "skipped" - 已存在 / 日期不满足 interval，跳过
-        "success" - 下载成功
-        "failed"  - 下载失败
-    """
     prefix = f"[{index}/{total}] " if index and total else ""
     logger.info(f"{prefix}正在获取: {url}")
     try:
@@ -155,7 +158,7 @@ async def safe_download_video(
 
     logger.info(f"{prefix}{video.title} 发布于 {video.publish_date}")
 
-    # ---------- interval 过滤 ----------
+    # interval 过滤
     interval_raw = str(cfg.get("interval", "all")).strip()
     if interval_raw.lower() != "all":
         interval_dt = parse_datetime(interval_raw)
@@ -166,11 +169,9 @@ async def safe_download_video(
             logger.warning(f"{prefix}无法解析 publish_date={video.publish_date}，跳过该视频 | URL: {url}")
             return "skipped"
         elif publish_dt <= interval_dt:
-            logger.info(
-                f"{prefix}发布日期 {publish_dt} <= interval {interval_dt}，跳过"
-            )
+            logger.info(f"{prefix}发布日期 {publish_dt} <= interval {interval_dt}，跳过")
             return "skipped"
-    # -----------------------------------
+
     raw_title = video.title or video.video_id or "untitled"
     safe_title = sanitize_filename(raw_title)
     output_filename = f"{safe_title}.mp4"
@@ -182,7 +183,7 @@ async def safe_download_video(
         logger.info(f"{prefix}文件已存在，跳过：{output_filename}")
         return "skipped"
 
-    # ★ 唯一关键改动：强制库使用安全文件名，避免 Errno 22
+    # 强制安全文件名，避免 Windows Errno 22
     video.title = safe_title
 
     dl_config = DownloadConfigHLS(
@@ -201,7 +202,8 @@ async def safe_download_video(
             err_msg = str(e)
             if "curl: (28)" in err_msg or "Timeout" in err_msg or "timeout" in err_msg.lower():
                 logger.warning(
-                    f"{prefix}下载超时 {attempt}/{cfg['download_max_retry']}，等待{cfg['retry_sleep']}s重试... | URL: {url}"
+                    f"{prefix}下载超时 {attempt}/{cfg['download_max_retry']}，"
+                    f"等待{cfg['retry_sleep']}s重试... | URL: {url}"
                 )
                 await asyncio.sleep(cfg["retry_sleep"])
             else:
@@ -212,24 +214,20 @@ async def safe_download_video(
     return "failed"
 
 
-# ========= 同步requests + BeautifulSoup 解析页面 =========
 def sync_fetch_video_links(page_url: str, proxy_str: str, retry_times=3):
     link_list = []
     proxies = {}
     if proxy_str:
-        proxies = {
-            "http": proxy_str,
-            "https": proxy_str
-        }
+        proxies = {"http": proxy_str, "https": proxy_str}
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     for tr in range(retry_times):
         try:
             response = requests.get(page_url, headers=headers, proxies=proxies, timeout=20)
             response.raise_for_status()
-            html_content = response.text
-            soup = BeautifulSoup(html_content, 'html.parser')
+            soup = BeautifulSoup(response.text, "html.parser")
             a_tags = soup.select('ul.full-row-thumbs a[href*="/view_video.php?viewkey="]')
             if not a_tags:
                 return []
@@ -252,27 +250,28 @@ def sync_fetch_video_links(page_url: str, proxy_str: str, retry_times=3):
 
 
 async def fetch_model_video_links(page_url: str, proxy_str: str, retry_times=3):
-    result = await asyncio.to_thread(sync_fetch_video_links, page_url, proxy_str, retry_times)
-    return result
+    return await asyncio.to_thread(sync_fetch_video_links, page_url, proxy_str, retry_times)
 
 
-async def download_model_videos(client: Client, raw_model_url: str, cfg: dict):
+async def download_model_videos(client: Client, raw_model_url: str, cfg: dict, user_name: str = ""):
     save_dir = Path(cfg["save_path"])
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    start_page = cfg["model_start_page"]
-    end_page = cfg["model_end_page"]
+    start_page = int(cfg["model_start_page"])
+    end_page = int(cfg["model_end_page"])
     proxy = cfg.get("proxy", "")
     success = skipped = failed = 0
-    failed_urls: list[str] = []   # 收集失败 URL
+    failed_urls: list[str] = []
 
     if "/videos" in raw_model_url:
         base_model_url = raw_model_url.split("/videos")[0].rstrip("/")
     else:
         base_model_url = raw_model_url.rstrip("/")
 
-    logger.info(f"Model批量 基础地址：{base_model_url}")
-    logger.info(f"interval 过滤: {cfg.get('interval', 'all')}")
+    logger.info(f"===== 开始处理用户: {user_name or base_model_url} =====")
+    logger.info(f"基础地址：{base_model_url}")
+    logger.info(f"保存目录：{save_dir}")
+    logger.info(f"interval：{cfg.get('interval', 'all')}")
     if end_page <= 0:
         logger.info(f"分页范围 起始页:{start_page} → 无上限")
     else:
@@ -281,7 +280,7 @@ async def download_model_videos(client: Client, raw_model_url: str, cfg: dict):
     current_page = start_page
     while True:
         target_page_url = f"{base_model_url}/videos?page={current_page}"
-        logger.info(f"===== 处理第{current_page}页 | {target_page_url} =====")
+        logger.info(f"----- 处理第{current_page}页 | {target_page_url} -----")
 
         video_urls = await fetch_model_video_links(target_page_url, proxy)
         if not video_urls:
@@ -290,7 +289,7 @@ async def download_model_videos(client: Client, raw_model_url: str, cfg: dict):
 
         video_urls_reversed = list(reversed(video_urls))
         total = len(video_urls_reversed)
-        logger.info(f"本页原生视频数量：{total}，启用反序下载")
+        logger.info(f"本页视频数量：{total}，反序下载")
 
         for idx, video_link in enumerate(video_urls_reversed, start=1):
             result = await safe_download_video(
@@ -307,14 +306,13 @@ async def download_model_videos(client: Client, raw_model_url: str, cfg: dict):
 
         current_page += 1
         if end_page > 0 and current_page > end_page:
-            logger.info(f"终止：到达设定终止页码 {end_page}")
+            logger.info(f"到达设定终止页码 {end_page}")
             break
         await asyncio.sleep(float(cfg["request_delay"]))
 
-    logger.info("========== 任务汇总 ==========")
+    logger.info(f"========== [{user_name or base_model_url}] 任务汇总 ==========")
     logger.info(f"成功: {success} | 跳过: {skipped} | 失败: {failed}")
 
-    # 打印所有失败 URL
     if failed_urls:
         logger.error("---------- 失败 URL 列表 ----------")
         for i, u in enumerate(failed_urls, 1):
@@ -323,12 +321,24 @@ async def download_model_videos(client: Client, raw_model_url: str, cfg: dict):
     else:
         logger.info("无失败 URL")
 
-    # 仅当本次从第 1 页开始跑完时，把 interval 回写为当日零点
+    # 仅从第1页跑完时回写该用户的 interval
     if start_page == 1:
         today_zero = datetime.now().strftime("%Y-%m-%d 00:00:00")
-        update_config_interval(CONFIG_PATH, today_zero)
+        update_user_interval(CONFIG_PATH, user_name, today_zero)
     else:
         logger.info(f"起始页为 {start_page}（非第1页），不回写 interval")
+
+
+def merge_user_cfg(global_cfg: dict, user: dict) -> dict:
+    """全局配置 + 单个用户配置合并"""
+    merged = global_cfg.copy()
+    for key in ("target", "save_path", "interval", "model_start_page", "model_end_page", "name"):
+        if key in user and user[key] is not None:
+            merged[key] = user[key]
+    # 保证数字类型
+    merged["model_start_page"] = int(merged.get("model_start_page", 1))
+    merged["model_end_page"] = int(merged.get("model_end_page", 20))
+    return merged
 
 
 async def main():
@@ -351,20 +361,41 @@ async def main():
     client = Client(core=core)
 
     mode = cfg["mode"].lower()
-    target_url = cfg["target"].strip()
     logger.info(f"运行模式: {mode}")
-    logger.info(f"目标链接: {target_url}")
-    logger.info(f"保存目录: {cfg['save_path']}")
-    logger.info(f"interval: {cfg.get('interval', 'all')}")
 
     if mode == "single":
+        target_url = cfg["target"].strip()
+        if not target_url:
+            logger.error("single 模式需要 target")
+            sys.exit(1)
         result = await safe_download_video(client, target_url, cfg)
         if result == "failed":
             logger.error(f"single 模式下载失败 | URL: {target_url}")
+
     elif mode == "model":
-        await download_model_videos(client, target_url, cfg)
+        userlist = cfg.get("userlist") or []
+
+        if userlist:
+            logger.info(f"共 {len(userlist)} 个用户，开始依次处理")
+            for idx, user in enumerate(userlist, 1):
+                user_cfg = merge_user_cfg(cfg, user)
+                name = user_cfg.get("name") or f"user_{idx}"
+                target = user_cfg.get("target", "").strip()
+                if not target:
+                    logger.warning(f"[{name}] 缺少 target，跳过")
+                    continue
+                logger.info(f"\n########## [{idx}/{len(userlist)}] 处理用户: {name} ##########")
+                await download_model_videos(client, target, user_cfg, user_name=name)
+        else:
+            # 兼容旧单 target 写法
+            target_url = cfg["target"].strip()
+            if not target_url:
+                logger.error("model 模式需要 target 或 userlist")
+                sys.exit(1)
+            await download_model_videos(client, target_url, cfg, user_name="")
+
     else:
-        logger.error("mode仅支持 single / model")
+        logger.error("mode 仅支持 single / model")
         sys.exit(1)
 
 
