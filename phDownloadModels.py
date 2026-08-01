@@ -3,7 +3,7 @@
 """
 Pornhub Downloader
 1. requests + BeautifulSoup 解析列表
-2. 当前页面视频反序下载，带序号
+2. 当前页面视频反序下载，带序号（废弃）
 3. interval 增量过滤：publish_date > interval 才下载；all 则不过滤
 4. 从第1页跑完后，把对应 user 的 interval 回写为当日零点
 5. 支持 userlist 多 model 循环
@@ -287,9 +287,10 @@ async def download_model_videos(client: Client, raw_model_url: str, cfg: dict, u
             logger.info(f"第{current_page}页无视频链接，判定尾页，停止爬取")
             break
 
-        video_urls_reversed = list(reversed(video_urls))
+        # video_urls_reversed = list(reversed(video_urls))
+        video_urls_reversed = video_urls
         total = len(video_urls_reversed)
-        logger.info(f"本页视频数量：{total}，反序下载")
+        logger.info(f"本页视频数量：{total}")
 
         for idx, video_link in enumerate(video_urls_reversed, start=1):
             result = await safe_download_video(
