@@ -1,0 +1,36 @@
+# 全局公共配置
+mode: model
+proxy: http://127.0.0.1:7897
+quality: "480"
+remux: true
+request_delay: 2
+download_max_retry: 4
+retry_sleep: 5
+
+# 多用户列表（优先使用）
+userlist:
+  - name: blondessa
+    target: https://www.pornhub.com/model/comatozze
+    save_path: ./downloads/comatozze
+    interval: "2026-07-05 03:10:38"
+    model_start_page: 1
+    model_end_page: 1
+  - name: blondessa
+    target: https://www.pornhub.com/model/blondessa
+    save_path: ./downloads/blondessa
+    interval: "all"
+    model_start_page: 1
+    model_end_page: 1
+  - name: blondessa
+    target: https://www.pornhub.com/model/xreindeers
+    save_path: ./downloads/xreindeers
+    interval: "2026-08-02 03:10:38"
+    model_start_page: 1
+    model_end_page: 1
+
+# 兼容旧写法：没有 userlist 时仍可用下面这组
+# target: https://www.pornhub.com/model/blondessa
+# save_path: ./downloads
+# interval: "2026-08-02 03:10:38"
+# model_start_page: 1
+# model_end_page: 1
